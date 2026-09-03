@@ -88,12 +88,26 @@
 - **科学降序排列**：Gemini Flash 系列（3.8 > 3.7 > 3.6 > 3.5 > 3）→ Gemini Pro（3.1 Pro）→ 2.5 系列 → Claude 4.6 → GPT-OSS。
 
 ### 2. ⚡ 顶栏实时配额徽章 (Header Badge)
+
+<p align="center">
+  <img src="./docs/images/badge.png" width="200" alt="顶栏配额徽章效果图" />
+  <br />
+  <em>▲ 挂载于会话顶栏的实时配额胶囊徽章（静态呼吸健康指示灯 + 动态百分比）</em>
+</p>
+
 - **非侵入插槽注入**：挂载于 `conversation.session.header.actions` 插槽，独立 ID `agy-ui-quota-badge`。
-- **一目了然的配额显示**：常驻显示当前活跃账号的 Gemini 5 小时配额（如 `AGY · 80%`）。
+- **一目了然的配额显示**：常驻显示当前活跃账号的 Gemini 5 小时配额（如 `AGY · 55%`）。
 - **动静相宜的呼吸微动效**：静态健康圆点平时稳定常亮（绿=正常、黄=冷却中/限流、灰=无可用账号），仅在后台数据同步或手动刷新时展示 1.2 秒平滑呼吸光效。
 - **120 秒全局频率锁**：2 分钟定时轮询 + 120 秒标签页/窗口聚焦节流锁，彻底杜绝切换标签页时高频击穿后台触发 Google 429 限流。
 
 ### 3. 🪟 轻量化毛玻璃配额透视弹窗 (Popover)
+
+<p align="center">
+  <img src="./docs/images/popover.png" width="380" alt="配额透视浮层效果图" />
+  <br />
+  <em>▲ 点击或悬停徽章呼出的多模型双周期（5小时/7天）配额监控面板</em>
+</p>
+
 - **悬停即现，支持钉选 (Pin)**：鼠标移入徽章毫秒级呼出，居中对齐徽章下方；点击徽章即可常驻固定。
 - **双周期（Dual-Bucket）配额条**：
   - **5 小时周期（Sprint）**：展示当前 5 小时内的剩余额度进度与百分比。
@@ -109,80 +123,30 @@
 
 ---
 
-## 🚀 安装与注册指南 (Installation)
+## 🚀 一键快速安装 (Quick Start)
 
-> 💡 **前置依赖**：本项目为 UI 伴生增强插件，底层依赖 [dsh-agy](https://github.com/chaos-03x/dsh-agy) 核心 Provider。安装前请确保已完成 `dsh-agy` 的安装及 Google 账号授权。
+> 💡 **前置要求**：请确保已经安装并登录基础 Provider [dsh-agy](https://github.com/chaos-03x/dsh-agy)。
 
-### 📌 插件注册原理说明
-DeepSeek Harness 采用 **Profile 多环境微内核架构**（Web 工作台默认环境路径为 `~/.dsh/profiles/web/`）。插件不仅需要在该 Profile 下安装依赖，还需要在 `package.json` 的 `dsh.profile.bundles` 数组中完成**加载注册**。
-
----
-
-### 路径 A：DSH 官方命令行一键安装注册（推荐 ⚡ 0 手动配置）
-
-直接在终端执行 DSH 官方插件管理指令，系统将自动拉取 npm 包并完成 Profile 的注册注入：
+打开终端，直接执行一行命令，DSH 将自动下载依赖并在 Profile 中完成激活注册：
 
 ```bash
-# 1. 向 DSH web profile 添加并注册 dsh-agy-ui 插件
+# 方式 A：npm 官方包一键安装（推荐）
 dsh plugin --profile web add dsh-agy-ui
 
-# 或：若 dsh 命令未全局配置，可使用 npx 免安装执行
-npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+# 方式 B：从 GitHub 仓库一键直装
+dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
 
-# 2. 启动或重启 DSH Web 服务
+# 提示：若未全局配置 dsh 命令，可使用 npx 免安装执行：
+# npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+```
+
+安装完成后，启动或重启 DSH Web：
+```bash
 dsh web
 # 或：dsh restart
 ```
 
----
-
-### 路径 B：本地源码开发 / 软链接注册
-
-如果您克隆了本项目源码，希望进行二次开发、调试或本地测试体验：
-
-```bash
-# 使用本地绝对路径一键关联至 DSH web profile
-dsh plugin --profile web add /path/to/dsh-agy-ui
-
-# 或使用 file: 协议指定
-dsh plugin --profile web add file:/path/to/dsh-agy-ui
-```
-
----
-
-### 路径 C：手动编辑 Profile 配置文件注册
-
-如果您偏好手动精确控制 Profile 配置，可直接编辑 `~/.dsh/profiles/web/package.json`：
-
-1. **声明依赖**：在 `dependencies` 中加入包引用：
-   ```json
-   "dependencies": {
-     "dsh-agy": "^0.2.4",
-     "dsh-agy-ui": "^0.1.0"
-   }
-   ```
-2. **注册 Bundle 声明**：在 `dsh.profile.bundles` 数组中追加 `dsh-agy-ui`：
-   ```json
-   {
-     "dsh": {
-       "profile": {
-         "bundles": [
-           "@deepseek-ai/dsh-base",
-           "@deepseek-ai/dsh-web-app",
-           "dsh-agy",
-           "dsh-agy-ui"
-         ]
-       }
-     }
-   }
-   ```
-3. **安装依赖并重启**：
-   ```bash
-   cd ~/.dsh/profiles/web && pnpm install
-   dsh web
-   ```
-
-完成上述任一安装路径后，刷新浏览器页面（如 `http://127.0.0.1:3080`），即可在会话顶栏看到配额徽章，并享受净化后的模型选择列表！
+刷新浏览器页面（`http://127.0.0.1:3080`），顶栏配额徽章与净化后的模型列表即刻呈现！
 
 ---
 

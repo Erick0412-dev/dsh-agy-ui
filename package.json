@@ -25,8 +25,17 @@
       "platform": "web"
     }
   },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsdown",
+    "prepare": "tsdown",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node test/interceptor.test.mjs"
   },

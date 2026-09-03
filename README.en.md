@@ -88,12 +88,26 @@ However, out-of-the-box it has several noticeable usability pain points:
 - **Priority Ranking**: Gemini Flash (3.8 > 3.7 > 3.6 > 3.5 > 3) → Gemini Pro (3.1 Pro) → 2.5 Series → Claude 4.6 → GPT-OSS.
 
 ### 2. ⚡ Persistent Header Quota Badge
+
+<p align="center">
+  <img src="./docs/images/badge.png" width="200" alt="Header Quota Badge Preview" />
+  <br />
+  <em>▲ Real-time quota capsule badge mounted on the session header (breathing indicator + dynamic percentage)</em>
+</p>
+
 - **Non-Invasive Slot Injection**: Mounted at `conversation.session.header.actions` with isolated ID `agy-ui-quota-badge`.
-- **Direct Quota Glance**: Directly shows Gemini 5-hour quota for the active account (e.g. `AGY · 80%`).
+- **Direct Quota Glance**: Directly shows Gemini 5-hour quota for the active account (e.g. `AGY · 55%`).
 - **Subtle Breathing Animation**: Steady indicator dot in normal operation (green = active, yellow = cooling/rate-limited, gray = unavailable); smoothly pulses for 1.2s only during background sync or manual refresh.
 - **120s Global Frequency Lock**: 2-minute polling interval combined with a 120-second window-focus cooldown lock, preventing high-frequency Google 429 rate limits caused by tab switches.
 
 ### 3. 🪟 Glassmorphic Quota Inspector Popover
+
+<p align="center">
+  <img src="./docs/images/popover.png" width="380" alt="Quota Inspector Popover Preview" />
+  <br />
+  <em>▲ Multi-model dual-bucket (5-hour/7-day) quota inspection panel</em>
+</p>
+
 - **Hover & Pin Support**: Hover to display instantly, centered right below the badge. Click the badge to pin it open.
 - **Dual-Bucket Quota Bars**:
   - **5-Hour Sprint Cycle**: Visual progress bar for current 5-hour rolling limit.
@@ -109,80 +123,30 @@ However, out-of-the-box it has several noticeable usability pain points:
 
 ---
 
-## 🚀 Installation & Plugin Registration
+## 🚀 Quick Start & Installation
 
-> 💡 **Prerequisite**: This is a companion UI enhancement plugin that works alongside the upstream [dsh-agy](https://github.com/chaos-03x/dsh-agy) provider. Please ensure `dsh-agy` is installed and authenticated before continuing.
+> 💡 **Prerequisite**: Ensure that the upstream [dsh-agy](https://github.com/chaos-03x/dsh-agy) provider is installed and authenticated.
 
-### 📌 How DSH Plugin Registration Works
-DeepSeek Harness is built on a **Profile-based microkernel architecture** (the default web profile directory is located at `~/.dsh/profiles/web/`). A plugin must not only be installed under `dependencies`, but also **declared and registered** in the `dsh.profile.bundles` array of `package.json`.
-
----
-
-### Route A: Official DSH CLI One-Click Install & Registration (Recommended ⚡ 0 manual edits)
-
-Run the official DSH plugin management command in your terminal to automatically fetch the package and register it into your profile:
+Run one command in your terminal. DSH automatically downloads dependencies and registers the bundle in your profile:
 
 ```bash
-# 1. Add and register dsh-agy-ui in the DSH web profile
+# Method A: One-click install from npm (Recommended)
 dsh plugin --profile web add dsh-agy-ui
 
-# Or use npx if dsh is not installed globally
-npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+# Method B: Direct install from GitHub repository
+dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
 
-# 2. Launch or restart DSH Web
+# Note: If dsh is not installed globally, prefix with npx:
+# npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+```
+
+Start or restart DSH Web:
+```bash
 dsh web
 # Or: dsh restart
 ```
 
----
-
-### Route B: Local Development / Source Linking
-
-If you have cloned the repository for local development, testing, or customization:
-
-```bash
-# Register using absolute path
-dsh plugin --profile web add /path/to/dsh-agy-ui
-
-# Or using file: protocol
-dsh plugin --profile web add file:/path/to/dsh-agy-ui
-```
-
----
-
-### Route C: Manual Configuration in Profile `package.json`
-
-If you prefer full manual control over your profile configuration, edit `~/.dsh/profiles/web/package.json`:
-
-1. **Add Dependency**:
-   ```json
-   "dependencies": {
-     "dsh-agy": "^0.2.4",
-     "dsh-agy-ui": "^0.1.0"
-   }
-   ```
-2. **Register in Bundles**: Add `dsh-agy-ui` to the `dsh.profile.bundles` array:
-   ```json
-   {
-     "dsh": {
-       "profile": {
-         "bundles": [
-           "@deepseek-ai/dsh-base",
-           "@deepseek-ai/dsh-web-app",
-           "dsh-agy",
-           "dsh-agy-ui"
-         ]
-       }
-     }
-   }
-   ```
-3. **Install and Restart**:
-   ```bash
-   cd ~/.dsh/profiles/web && pnpm install
-   dsh web
-   ```
-
-After completing any of the routes above, refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified models and the header quota badge!
+Refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified models and the header quota badge!
 
 ---
 
