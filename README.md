@@ -125,19 +125,16 @@
 
 ## 🚀 一键快速安装 (Quick Start)
 
-> 💡 **前置要求**：请确保已经安装并登录基础 Provider [dsh-agy](https://github.com/chaos-03x/dsh-agy)。
+> 💡 **前置要求**：请确保已经安装并配置好底层 Provider [dsh-agy](https://github.com/chaos-03x/dsh-agy)。
 
-打开终端，直接执行一行命令，DSH 将自动下载依赖并在 Profile 中完成激活注册：
+本项目已正式发布至 **[npm 官方仓库 (dsh-agy-ui)](https://www.npmjs.com/package/dsh-agy-ui)**。打开终端，一行命令即可全自动安装并完成 Profile 激活注册：
 
 ```bash
-# 方式 A：npm 官方包一键安装（推荐）
+# 官方 CLI 一键安装注册（全自动拉取并注入 Profile）
 dsh plugin --profile web add dsh-agy-ui
 
-# 方式 B：从 GitHub 仓库一键直装
-dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
-
-# 提示：若未全局配置 dsh 命令，可使用 npx 免安装执行：
-# npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+# 💡 若未全局安装 dsh 命令，可使用 npx 免安装执行：
+npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
 ```
 
 安装完成后，启动或重启 DSH Web：
@@ -146,7 +143,20 @@ dsh web
 # 或：dsh restart
 ```
 
-刷新浏览器页面（`http://127.0.0.1:3080`），顶栏配额徽章与净化后的模型列表即刻呈现！
+刷新浏览器页面（`http://127.0.0.1:3080`），顶栏实时额度徽章与净化后的模型列表即刻呈现！
+
+<details>
+<summary><b>🛠️ 开发者 / 源码安装方式</b></summary>
+
+- **从 GitHub 仓库一键直装**：
+  ```bash
+  dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
+  ```
+- **本地克隆二次开发**：
+  ```bash
+  dsh plugin --profile web add /path/to/dsh-agy-ui
+  ```
+</details>
 
 ---
 

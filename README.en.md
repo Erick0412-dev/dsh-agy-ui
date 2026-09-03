@@ -127,17 +127,14 @@ However, out-of-the-box it has several noticeable usability pain points:
 
 > 💡 **Prerequisite**: Ensure that the upstream [dsh-agy](https://github.com/chaos-03x/dsh-agy) provider is installed and authenticated.
 
-Run one command in your terminal. DSH automatically downloads dependencies and registers the bundle in your profile:
+This project is officially published on **[npm (dsh-agy-ui)](https://www.npmjs.com/package/dsh-agy-ui)**. Run one command in your terminal to automatically install dependencies and register the bundle into your DSH profile:
 
 ```bash
-# Method A: One-click install from npm (Recommended)
+# Official CLI one-click install & registration
 dsh plugin --profile web add dsh-agy-ui
 
-# Method B: Direct install from GitHub repository
-dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
-
-# Note: If dsh is not installed globally, prefix with npx:
-# npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+# 💡 If dsh is not in global PATH, run via npx:
+npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
 ```
 
 Start or restart DSH Web:
@@ -147,6 +144,19 @@ dsh web
 ```
 
 Refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified models and the header quota badge!
+
+<details>
+<summary><b>🛠️ Developer / Git Installation Options</b></summary>
+
+- **Direct Install from GitHub**:
+  ```bash
+  dsh plugin --profile web add github:Erick0412-dev/dsh-agy-ui
+  ```
+- **Local Source Development**:
+  ```bash
+  dsh plugin --profile web add /path/to/dsh-agy-ui
+  ```
+</details>
 
 ---
 
