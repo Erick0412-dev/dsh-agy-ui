@@ -1,0 +1,4 @@
+# dsh-agy-ui bundle patch: mounts dsh-agy-ui companion plugin into DSH.
+- insert:
+    - id: dsh-agy-ui
+      name: 'dsh-agy-ui'
