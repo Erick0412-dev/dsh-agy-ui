@@ -75,6 +75,13 @@
 ## ✨ 核心特性详解
 
 ### 1. 🧼 模型菜单智能净化与统一排版
+
+<p align="center">
+  <img src="./docs/images/clean-models.png" width="300" alt="净化后的模型列表效果图" />
+  <br />
+  <em>▲ 净化后的 Antigravity (agy) 原生模型选择列表效果预览</em>
+</p>
+
 - **内部幽灵模型过滤**：自动过滤 `^chat_\d+$`、`^tab_` 等非对话专用的内部调试与代码补全模型。
 - **思考档位规范折叠**：将散落的 `-low`、`-medium`、`-high` 变体收敛至根模型，注入标准的 `thinkingEfforts` 声明，让 DSH 原生思考选择器生效。
 - **品牌名称优雅规范**：将 Tiered 系列模型（如 `gemini-3.8-flash-tiered`）自动格式化为标准展示名（如 `Gemini 3.8 Flash`）。
@@ -102,44 +109,80 @@
 
 ---
 
-## 🚀 安装指南
+## 🚀 安装与注册指南 (Installation)
 
-### 第一步：在 DSH Profile 中安装
+> 💡 **前置依赖**：本项目为 UI 伴生增强插件，底层依赖 [dsh-agy](https://github.com/chaos-03x/dsh-agy) 核心 Provider。安装前请确保已完成 `dsh-agy` 的安装及 Google 账号授权。
 
-进入您的 DeepSeek Harness Profile 目录（如 `~/.dsh/profiles/<profile-name>`）：
+### 📌 插件注册原理说明
+DeepSeek Harness 采用 **Profile 多环境微内核架构**（Web 工作台默认环境路径为 `~/.dsh/profiles/web/`）。插件不仅需要在该 Profile 下安装依赖，还需要在 `package.json` 的 `dsh.profile.bundles` 数组中完成**加载注册**。
 
-```bash
-pnpm add dsh-agy-ui
-```
+---
 
-> 💡 **前置依赖**：请确保已经安装并配置好基础后端 [dsh-agy](https://github.com/chaos-03x/dsh-agy)。
+### 路径 A：DSH 官方命令行一键安装注册（推荐 ⚡ 0 手动配置）
 
-### 第二步：在 `package.json` 中声明加载
-
-编辑 Profile 目录下的 `package.json`，在 `dsh.profile.bundles` 列表中加入 `dsh-agy-ui`：
-
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "dsh-agy",
-        "dsh-agy-ui"
-      ]
-    }
-  }
-}
-```
-
-### 第三步：重启 DSH
+直接在终端执行 DSH 官方插件管理指令，系统将自动拉取 npm 包并完成 Profile 的注册注入：
 
 ```bash
-dsh restart
+# 1. 向 DSH web profile 添加并注册 dsh-agy-ui 插件
+dsh plugin --profile web add dsh-agy-ui
+
+# 或：若 dsh 命令未全局配置，可使用 npx 免安装执行
+npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+
+# 2. 启动或重启 DSH Web 服务
+dsh web
+# 或：dsh restart
 ```
 
-刷新 Web 页面（如 `http://127.0.0.1:3080`），即可在会话顶栏看到配额徽章，并享受净化后的模型选择列表！
+---
+
+### 路径 B：本地源码开发 / 软链接注册
+
+如果您克隆了本项目源码，希望进行二次开发、调试或本地测试体验：
+
+```bash
+# 使用本地绝对路径一键关联至 DSH web profile
+dsh plugin --profile web add /path/to/dsh-agy-ui
+
+# 或使用 file: 协议指定
+dsh plugin --profile web add file:/path/to/dsh-agy-ui
+```
+
+---
+
+### 路径 C：手动编辑 Profile 配置文件注册
+
+如果您偏好手动精确控制 Profile 配置，可直接编辑 `~/.dsh/profiles/web/package.json`：
+
+1. **声明依赖**：在 `dependencies` 中加入包引用：
+   ```json
+   "dependencies": {
+     "dsh-agy": "^0.2.4",
+     "dsh-agy-ui": "^0.1.0"
+   }
+   ```
+2. **注册 Bundle 声明**：在 `dsh.profile.bundles` 数组中追加 `dsh-agy-ui`：
+   ```json
+   {
+     "dsh": {
+       "profile": {
+         "bundles": [
+           "@deepseek-ai/dsh-base",
+           "@deepseek-ai/dsh-web-app",
+           "dsh-agy",
+           "dsh-agy-ui"
+         ]
+       }
+     }
+   }
+   ```
+3. **安装依赖并重启**：
+   ```bash
+   cd ~/.dsh/profiles/web && pnpm install
+   dsh web
+   ```
+
+完成上述任一安装路径后，刷新浏览器页面（如 `http://127.0.0.1:3080`），即可在会话顶栏看到配额徽章，并享受净化后的模型选择列表！
 
 ---
 

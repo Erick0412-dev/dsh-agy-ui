@@ -75,6 +75,13 @@ However, out-of-the-box it has several noticeable usability pain points:
 ## ✨ Features Breakdown
 
 ### 1. 🧼 Model Purification & Standardized Presentation
+
+<p align="center">
+  <img src="./docs/images/clean-models.png" width="300" alt="Purified Models List Preview" />
+  <br />
+  <em>▲ Purified Antigravity (agy) native model selector dropdown preview</em>
+</p>
+
 - **Ghost Model Exclusion**: Automatically excludes internal non-chat endpoints matching `^chat_\d+$` and `^tab_`.
 - **Reasoning Variant Folding**: Collapses fragmented `-low`, `-medium`, `-high` models into their root model, injecting standard `thinkingEfforts` metadata so DSH's native reasoning dropdown activates.
 - **Brand Typography**: Formats Tiered models (e.g. `gemini-3.8-flash-tiered`) into canonical titles (`Gemini 3.8 Flash`).
@@ -102,44 +109,80 @@ However, out-of-the-box it has several noticeable usability pain points:
 
 ---
 
-## 🚀 Installation & Setup
+## 🚀 Installation & Plugin Registration
 
-### Step 1: Install in your DSH Profile
+> 💡 **Prerequisite**: This is a companion UI enhancement plugin that works alongside the upstream [dsh-agy](https://github.com/chaos-03x/dsh-agy) provider. Please ensure `dsh-agy` is installed and authenticated before continuing.
 
-In your DeepSeek Harness profile directory (e.g. `~/.dsh/profiles/<profile-name>`):
+### 📌 How DSH Plugin Registration Works
+DeepSeek Harness is built on a **Profile-based microkernel architecture** (the default web profile directory is located at `~/.dsh/profiles/web/`). A plugin must not only be installed under `dependencies`, but also **declared and registered** in the `dsh.profile.bundles` array of `package.json`.
 
-```bash
-pnpm add dsh-agy-ui
-```
+---
 
-> 💡 **Prerequisite**: Ensure that the upstream [dsh-agy](https://github.com/chaos-03x/dsh-agy) provider is installed and configured.
+### Route A: Official DSH CLI One-Click Install & Registration (Recommended ⚡ 0 manual edits)
 
-### Step 2: Declare in `package.json`
-
-Add `dsh-agy-ui` to your `package.json` under `dsh.profile.bundles`:
-
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "dsh-agy",
-        "dsh-agy-ui"
-      ]
-    }
-  }
-}
-```
-
-### Step 3: Restart DSH
+Run the official DSH plugin management command in your terminal to automatically fetch the package and register it into your profile:
 
 ```bash
-dsh restart
+# 1. Add and register dsh-agy-ui in the DSH web profile
+dsh plugin --profile web add dsh-agy-ui
+
+# Or use npx if dsh is not installed globally
+npx @deepseek-ai/dsh plugin --profile web add dsh-agy-ui
+
+# 2. Launch or restart DSH Web
+dsh web
+# Or: dsh restart
 ```
 
-Refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified models and the header quota badge!
+---
+
+### Route B: Local Development / Source Linking
+
+If you have cloned the repository for local development, testing, or customization:
+
+```bash
+# Register using absolute path
+dsh plugin --profile web add /path/to/dsh-agy-ui
+
+# Or using file: protocol
+dsh plugin --profile web add file:/path/to/dsh-agy-ui
+```
+
+---
+
+### Route C: Manual Configuration in Profile `package.json`
+
+If you prefer full manual control over your profile configuration, edit `~/.dsh/profiles/web/package.json`:
+
+1. **Add Dependency**:
+   ```json
+   "dependencies": {
+     "dsh-agy": "^0.2.4",
+     "dsh-agy-ui": "^0.1.0"
+   }
+   ```
+2. **Register in Bundles**: Add `dsh-agy-ui` to the `dsh.profile.bundles` array:
+   ```json
+   {
+     "dsh": {
+       "profile": {
+         "bundles": [
+           "@deepseek-ai/dsh-base",
+           "@deepseek-ai/dsh-web-app",
+           "dsh-agy",
+           "dsh-agy-ui"
+         ]
+       }
+     }
+   }
+   ```
+3. **Install and Restart**:
+   ```bash
+   cd ~/.dsh/profiles/web && pnpm install
+   dsh web
+   ```
+
+After completing any of the routes above, refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified models and the header quota badge!
 
 ---
 
