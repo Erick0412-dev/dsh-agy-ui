@@ -52,9 +52,9 @@ export const AgyQuotaBadge: React.FC = () => {
 
   const fetchAccountsAndQuotas = useCallback(async (isManual: boolean = false) => {
     const now = Date.now();
-    // Frequency Lock: In non-manual cases (e.g. switching tabs / window focus),
-    // enforce at least a 60-second cooldown so it NEVER repeatedly fires on every tab switch!
-    if (!isManual && lastFetchTimeRef.current > 0 && now - lastFetchTimeRef.current < 60000) {
+    // Global Frequency Lock: In non-manual cases (e.g. switching tabs / window focus),
+    // enforce at least a 120-second cooldown so it NEVER repeatedly fires on every tab switch!
+    if (!isManual && lastFetchTimeRef.current > 0 && now - lastFetchTimeRef.current < 120000 - 1000) {
       return;
     }
     lastFetchTimeRef.current = now;
