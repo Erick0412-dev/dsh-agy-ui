@@ -1,6 +1,6 @@
 {
   "name": "dsh-agy-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek Harness Antigravity UI & Experience Enhancement Plugin",
   "type": "module",
   "main": "./dist/index.js",
