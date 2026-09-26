@@ -1,6 +1,12 @@
 import { wrapAdapter } from "./interceptor.js";
 export * from "./interceptor.js";
 
+// The quota view helpers are dependency-free on purpose: they are re-exported
+// from this Node entry so they can be unit-tested without a browser, while the
+// client half imports the same module and inlines it into the web bundle.
+export * from "./quota.js";
+export * from "./quota-source.js";
+
 export const name = "dsh-agy-ui";
 export const inject = ["llm"];
 

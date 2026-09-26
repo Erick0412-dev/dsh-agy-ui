@@ -1,44 +1,72 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import type { AgyAccount, AgyAccountsResponse, AgyLinkQuotas } from "./types.js";
+import type { AgyAccountView, AgyLinkQuotas, AgyAccountSource } from "./types.js";
+import { dotStateFor, pickBadgePercent, pickBadgeQuota, windowLabel } from "../quota.js";
+import {
+  createAgyRpc,
+  loadAgyState,
+  LIMITS_TTL_MS
+} from "../quota-source.js";
+import type { AgyRpc, ConnectionLike, LimitsProbe } from "../quota-source.js";
 import { QuotaPopover } from "./popover.js";
 
 /**
- * Get specifically Gemini's 5-Hour limit percentage (0-100).
- * Strictly ignores weekly quota to avoid confusion.
+ * DSH's client `connection` service, handed over by `apply()`.
+ *
+ * The header-actions slot renders its component with empty props, so the service
+ * cannot arrive as a prop and a module-level accessor is the only route to it.
  */
-export function getGemini5hPercentage(accounts: AgyAccount[], linkQuotas?: AgyLinkQuotas | null): number | null {
-  // 1. First priority: official Google family 5-hour limit remainingFraction
-  if (typeof linkQuotas?.google?.remainingFraction === "number" && Number.isFinite(linkQuotas.google.remainingFraction)) {
-    return Math.round(linkQuotas.google.remainingFraction * 100);
+let agyUiConnection: ConnectionLike | null = null;
+
+/** Publish the connection service to the badge (called from the plugin's apply). */
+export function setAgyUiConnection(connection: ConnectionLike | null): void {
+  agyUiConnection = connection;
+  cachedRpcFor = undefined;
+}
+
+/** The connection service currently in use, for diagnostics. */
+export function getAgyUiConnection(): ConnectionLike | null {
+  return agyUiConnection;
+}
+
+/**
+ * The `agy` RPC caller, rebuilt only when the connection service changes.
+ *
+ * `cachedRpcFor` uses `undefined` as "not built yet" so a null connection is
+ * cached too, rather than rebuilding on every poll.
+ */
+let cachedRpc: AgyRpc | null = null;
+let cachedRpcFor: ConnectionLike | null | undefined = undefined;
+
+function currentRpc(): AgyRpc | null {
+  if (cachedRpcFor !== agyUiConnection) {
+    cachedRpc = createAgyRpc(agyUiConnection);
+    cachedRpcFor = agyUiConnection;
   }
+  return cachedRpc;
+}
 
-  // 2. Second priority: Active account's Gemini models 5h remainingFraction
-  const activeAccount = accounts.find(a => a.active) || accounts[0];
-  if (activeAccount?.quota?.models?.length) {
-    const geminiCoreIds = [
-      "gemini-3.8-flash-tiered",
-      "gemini-3.7-flash-tiered",
-      "gemini-3.6-flash-tiered",
-      "gemini-3.1-pro-low",
-      "gemini-pro-agent",
-      "gemini-2.5-flash",
-      "gemini-2.5-pro"
-    ];
-
-    for (const id of geminiCoreIds) {
-      const m = activeAccount.quota.models.find(item => item.id === id);
-      if (typeof m?.remainingFraction === "number" && Number.isFinite(m.remainingFraction)) {
-        return Math.round(m.remainingFraction * 100);
-      }
-    }
-  }
-
-  return null;
+/**
+ * Get the active account's most constrained window, as a percentage (0-100).
+ *
+ * Backed by `pickBadgePercent` in `../quota.ts`, which weighs the grouped 5h and
+ * weekly windows of the active account against their own drain thresholds — the
+ * only sources dsh-agy >= 0.3.0 offers, since its per-model `quotaInfo` has no
+ * window field at all.
+ *
+ * @deprecated use `pickBadgeQuota` from `dsh-agy-ui`; it also reports which
+ * window produced the number.
+ */
+export function getGemini5hPercentage(
+  accounts: AgyAccountView[],
+  linkQuotas?: AgyLinkQuotas | null
+): number | null {
+  return pickBadgePercent(accounts, linkQuotas);
 }
 
 export const AgyQuotaBadge: React.FC = () => {
-  const [accounts, setAccounts] = useState<AgyAccount[]>([]);
+  const [accounts, setAccounts] = useState<AgyAccountView[]>([]);
   const [linkQuotas, setLinkQuotas] = useState<AgyLinkQuotas | null>(null);
+  const [source, setSource] = useState<AgyAccountSource>("none");
   const [loading, setLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -49,44 +77,53 @@ export const AgyQuotaBadge: React.FC = () => {
   const badgeRef = useRef<HTMLButtonElement | null>(null);
   const leaveTimerRef = useRef<any>(null);
   const lastFetchTimeRef = useRef<number>(0);
+  const lastProbeFailRef = useRef<number>(0);
 
   const fetchAccountsAndQuotas = useCallback(async (isManual: boolean = false) => {
     const now = Date.now();
-    // Global Frequency Lock: In non-manual cases (e.g. switching tabs / window focus),
-    // enforce at least a 120-second cooldown so it NEVER repeatedly fires on every tab switch!
+    // Global Frequency Lock: in non-manual cases (tab switch / window focus),
+    // enforce at least a 120-second cooldown so this NEVER repeatedly fires.
     if (!isManual && lastFetchTimeRef.current > 0 && now - lastFetchTimeRef.current < 120000 - 1000) {
       return;
     }
     lastFetchTimeRef.current = now;
 
+    // A failed probe run writes NOTHING to dsh-agy's limits cache, so the
+    // snapshot stays stale and every poll would probe upstream again. Back off
+    // for one full TTL after a run that measured nothing and failed. The user's
+    // explicit refresh is never gated by this.
+    const probeFailedRecently =
+      lastProbeFailRef.current > 0 && now - lastProbeFailRef.current < LIMITS_TTL_MS;
+    const probe: LimitsProbe = isManual ? "force" : probeFailedRecently ? "off" : "auto";
+
     try {
       setIsUpdating(true);
       setLoading(true);
-      const [accRes, linkRes] = await Promise.all([
-        fetch("/agy/api/accounts").catch(() => null),
-        fetch("/plugins/agy-link/status").catch(() => null)
-      ]);
+      const state = await loadAgyState({ rpc: currentRpc(), limits: probe });
+      if (!mountedRef.current) return;
 
-      if (mountedRef.current && accRes && accRes.ok) {
-        const data: AgyAccountsResponse = await accRes.json();
-        if (Array.isArray(data.accounts)) {
-          setAccounts(data.accounts);
-        }
+      // Keep the last good rows when no channel answered at all; an empty reply
+      // from a channel that DID answer is a real "no accounts" and is applied.
+      if (state.accountSource !== "none") {
+        setAccounts(state.accounts);
+        setSource(state.accountSource);
       }
-
-      if (mountedRef.current && linkRes && linkRes.ok) {
-        const data = await linkRes.json();
-        const quotas = data.pool?.accounts?.[0]?.quotas;
-        if (quotas) {
-          setLinkQuotas(quotas);
-        }
+      if (state.linkQuotas) {
+        setLinkQuotas(state.linkQuotas);
       }
-    } catch {
-      // Graceful degradation
+      if (state.limits) {
+        lastProbeFailRef.current =
+          state.limits.measured === 0 && state.limits.failed > 0 ? Date.now() : 0;
+      }
+      if (state.error) {
+        console.warn("[dsh-agy-ui] quota refresh:", state.error);
+      }
+    } catch (err) {
+      console.warn("[dsh-agy-ui] quota refresh failed:", err);
     } finally {
       if (mountedRef.current) {
         setLoading(false);
-        // Retain breathing pulse for 1.2s to smoothly complete the pulse cycle
+        // Retain the breathing pulse for 1.2s to smoothly complete the cycle.
         setTimeout(() => {
           if (mountedRef.current) {
             setIsUpdating(false);
@@ -107,7 +144,7 @@ export const AgyQuotaBadge: React.FC = () => {
       }
     }, 120000);
 
-    // Window focus / visibility change handler (strictly throttled by lastFetchTimeRef)
+    // Window focus / visibility change handler (strictly throttled above)
     const onWake = () => {
       if (typeof document === "undefined" || document.visibilityState !== "hidden") {
         fetchAccountsAndQuotas(false);
@@ -182,20 +219,14 @@ export const AgyQuotaBadge: React.FC = () => {
     setIsHovered(false);
   };
 
-  const activeAccounts = accounts.filter(a => a.active || a.state === "active");
-  const hasCooling = accounts.some(a => a.state === "cooling" || a.state === "rate-limited");
-  const activeCount = accounts.length;
+  const accountCount = accounts.length;
+  const dotState = dotStateFor(accounts);
 
-  let dotState: "active" | "cooling" | "disabled" = "disabled";
-  if (activeAccounts.length > 0) {
-    dotState = hasCooling ? "cooling" : "active";
-  } else if (accounts.length > 0) {
-    dotState = "cooling";
-  }
-
-  // Requirement 2: Default state directly displays Gemini 5h quota!
-  const gemini5h = getGemini5hPercentage(accounts, linkQuotas);
-  const displayText = gemini5h !== null ? `AGY · ${gemini5h}%` : `AGY ✦ ${activeCount}`;
+  // The tightest window the pool rotates on, so a spent week cannot hide behind
+  // a healthy five-hour bucket. The badge names the window when it is not the 5h.
+  const badgeQuota = pickBadgeQuota(accounts, linkQuotas);
+  const badgeWindow = badgeQuota?.window && badgeQuota.window !== "5h" ? `${windowLabel(badgeQuota.window)} ` : "";
+  const displayText = badgeQuota !== null ? `AGY · ${badgeWindow}${badgeQuota.percent}%` : `AGY ✦ ${accountCount}`;
 
   const isOpen = isPinned || isHovered;
 
@@ -205,7 +236,7 @@ export const AgyQuotaBadge: React.FC = () => {
         ref={badgeRef}
         type="button"
         className={`agy-ui-badge ${isPinned ? "pinned" : ""}`}
-        title={`Antigravity: ${activeCount} 个账号就绪 · Gemini 5h额度: ${gemini5h !== null ? `${gemini5h}%` : "就绪"} · 悬停或点击查看配额详情`}
+        title={`Antigravity: ${accountCount} 个账号 · ${badgeQuota ? `${windowLabel(badgeQuota.window ?? "5h")}: ${badgeQuota.percent}%` : "额度未知"} · 悬停或点击查看配额详情`}
         onClick={handleTogglePin}
         onMouseEnter={handleMouseEnterBadge}
         onMouseLeave={handleMouseLeaveBadge}
@@ -224,6 +255,7 @@ export const AgyQuotaBadge: React.FC = () => {
         anchorRect={anchorRect}
         accounts={accounts}
         linkQuotas={linkQuotas}
+        source={source}
         loading={loading}
         onRefresh={() => fetchAccountsAndQuotas(true)}
       />

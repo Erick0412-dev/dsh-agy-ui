@@ -32,8 +32,8 @@ However, out-of-the-box it has several noticeable usability pain points:
 | **Reasoning Efforts** | Low / Medium / High efforts expanded into separate dropdown rows | 🎛️ **Smart Variant Folding**, seamlessly triggers DSH native reasoning picker |
 | **Tiered Model Names** | Raw IDs displayed crudely (e.g. `gemini-3.8-flash-tiered`) | ✨ **Standardized Brand Typography**, shown cleanly as `Gemini 3.8 Flash` |
 | **Model Priority** | Disordered sequence, hard to spot primary models quickly | 🏆 **Strict Priority Ranking**: 3.8 Flash > 3.7 > 3.6 > Pro > Claude > GPT-OSS |
-| **Quota Visibility** | Quotas hidden away on separate `/agy` dashboard | ⚡ **Persistent Header Badge**, directly showing Gemini 5-hour quota |
-| **Quota Inspection** | Must navigate away from current chat to check details | 🪟 **Hover/Click Glassmorphic Popover**, inspecting 5-hour sprint & 7-day cap |
+| **Quota Visibility** | Quotas hidden away on separate `/agy` dashboard | ⚡ **Persistent Header Badge**, directly showing the tightest quota window (5-hour / weekly) |
+| **Quota Inspection** | Must navigate away from current chat to check details | 🪟 **Hover/Click Glassmorphic Popover**, inspecting every 5-hour / daily / weekly / monthly window |
 | **Mobile UX** | Desktop popovers overflow or get cut off on narrow screens | 📱 **Responsive Drawer**, automatically slides up an iOS/Android bottom sheet |
 
 `dsh-agy-ui` is strictly architected as a **pure companion enhancement plugin**: network transport, request streaming, and tool execution remain 100% managed by `dsh-agy`.
@@ -96,7 +96,8 @@ However, out-of-the-box it has several noticeable usability pain points:
 </p>
 
 - **Non-Invasive Slot Injection**: Mounted at `conversation.session.header.actions` with isolated ID `agy-ui-quota-badge`.
-- **Direct Quota Glance**: Directly shows Gemini 5-hour quota for the active account (e.g. `AGY · 55%`).
+- **Direct Quota Glance**: Directly shows the **tightest** window of the active account (e.g. `AGY · 55%`), read from dsh-agy’s **grouped windows** (`account.limits`) rather than the per-model quota upstream removed.
+- **Weighed by runway left, not by raw minimum**: the 5-hour and weekly windows are each measured against their own drain threshold (15% / 1%, matching dsh-agy's rotation test), so a nearly spent week takes the badge over and is named (`AGY · 周额度 1%`), while a half-spent week does not drag the 5-hour figure down. `daily` / `monthly` windows are displayed but never drive it — the pool does not block on them.
 - **Subtle Breathing Animation**: Steady indicator dot in normal operation (green = active, yellow = cooling/rate-limited, gray = unavailable); smoothly pulses for 1.2s only during background sync or manual refresh.
 - **120s Global Frequency Lock**: 2-minute polling interval combined with a 120-second window-focus cooldown lock, preventing high-frequency Google 429 rate limits caused by tab switches.
 
@@ -105,21 +106,37 @@ However, out-of-the-box it has several noticeable usability pain points:
 <p align="center">
   <img src="./docs/images/popover.png" width="380" alt="Quota Inspector Popover Preview" />
   <br />
-  <em>▲ Multi-model dual-bucket (5-hour/7-day) quota inspection panel</em>
+  <em>▲ Grouped multi-window (5-hour / daily / weekly / monthly) quota inspection panel</em>
 </p>
 
 - **Hover & Pin Support**: Hover to display instantly, centered right below the badge. Click the badge to pin it open.
-- **Dual-Bucket Quota Bars**:
-  - **5-Hour Sprint Cycle**: Visual progress bar for current 5-hour rolling limit.
-  - **7-Day Weekly Cap**: Automatically surfaces weekly quota limits when available.
-- **Account Health & Shortcuts**: Displays masked account identifier, real-time health status, one-click refresh button, and direct shortcut to the `/agy` dashboard.
+- **Every window of every upstream group**: dsh-agy's quota groups pass through verbatim (currently `Gemini Models` and `Claude and GPT models`), one row per window, labelled from upstream's own `window` field:
+  - **5-hour (5h)**, **daily**, **weekly**, **monthly** — and any window token upstream adds later is carried through verbatim rather than dropped.
+  - **A window upstream did not report renders as `—` over a grey empty bar**, never 0%: "unknown" and "exhausted" are opposite facts.
+- **Account Health & Shortcuts**: Displays masked account identifier and real-time health status (including the `verification-required` park and its appeal link), a one-click refresh button, and — on `dsh-agy ≥ 0.3.0` — a pointer to **Settings → Antigravity**.
 
 ### 4. 📱 Mobile Bottom Sheet Drawer
 - Responsive adaptation: On screens $\le$ 640px, the popover transforms into an iOS/Android style bottom drawer with touch-friendly dismiss and backdrop.
 
 ### 5. 🛡️ Namespace Isolation & Coexistence
 - All CSS classes use the `agy-ui-*` namespace prefix, completely eliminating style bleed.
-- Fully compatible with `dsh-agy-link`: safely coexists and prioritizes link's official dual-bucket quota endpoints when detected.
+- Fully compatible with `dsh-agy-link`: quota data follows the fallback order **dsh-agy grouped windows → dsh-agy-link family quotas → legacy per-model rows**.
+
+### 6. 🔌 Data Channel (dsh-agy ≥ 0.3.0)
+
+dsh-agy 0.3.0 moved its management surface from the standalone `/agy` dashboard onto **DSH's own RPC channel**: the host registers `/api/agy` and the browser calls it through `connection.rpc.call('/api', 'agy', { method, payload })`. Only `/agy/oauth-callback` is still a plain HTTP route (Google redirects a browser there with a GET); the old `/agy/api/accounts` is **gone**. The 5-hour / weekly source also changed: `fetchAvailableModels`' per-model `quotaInfo` has **no window field** and therefore can never distinguish 5h from weekly, so the windows now come from `v1internal:retrieveUserQuotaSummary`, cached per account as `cachedLimits`.
+
+This plugin therefore reads, in order (see `src/quota-source.ts`):
+
+| Priority | Channel | Notes |
+| :--- | :--- | :--- |
+| 1 | `POST /api/agy` → `account.list` | Account rows plus `limits` / `limitsUpdatedAt` (a TTL cache — **no upstream request**) |
+| 1 | `POST /api/agy` → `account.limits` | The grouped windows; inside the 10-minute TTL the server skips the probe entirely, so a real measurement happens only when stale or on an explicit refresh (`force: true`) |
+| 2 | `GET /agy/api/accounts` | Legacy dsh-agy (< 0.3.0) fallback |
+| 3 | `GET /plugins/agy-link/status` | An independent quota pool, always fetched in parallel |
+
+- **Automatic polling never `force`s**: no upstream call inside the TTL. If a probe run fails entirely (`measured: 0` with `failed > 0`) the client backs off for a full TTL, so a broken probe cannot turn every poll into an upstream request.
+- **Degrades instead of blanking**: a missing `connection` service or a failing RPC falls back to the legacy HTTP channel, and when neither answers the last good data is kept on screen rather than cleared.
 
 ---
 
@@ -164,7 +181,7 @@ Refresh your DSH Web interface (`http://127.0.0.1:3080`) to enjoy purified model
 
 <details>
 <summary><b>Q1: Why does the badge indicator show a gray dot?</b></summary>
-A gray dot indicates that no active Antigravity accounts were detected. Visit <code>http://127.0.0.1:3080/agy</code> to add an account and complete Google authentication.
+A gray dot indicates that no active Antigravity accounts were detected. On dsh-agy 0.3.0 and later, add an account and complete Google authentication under DSH's <b>Settings → Antigravity</b> (upstream removed the old <code>/agy</code> dashboard).
 </details>
 
 <details>
@@ -174,7 +191,7 @@ To protect your accounts against Google 429 Rate Limit penalties, the plugin imp
 
 <details>
 <summary><b>Q3: Can I run both dsh-agy-ui and dsh-agy-link together?</b></summary>
-Yes! <code>dsh-agy-ui</code> features isolated slot IDs and distinct CSS namespaces. It seamlessly coexists with <code>dsh-agy-link</code> and automatically leverages link's quota endpoints when available.
+Yes! <code>dsh-agy-ui</code> features isolated slot IDs and distinct CSS namespaces. It seamlessly coexists with <code>dsh-agy-link</code> and uses it as a fallback: dsh-agy's grouped windows (5h / daily / weekly / monthly) come first, and link's family quotas are read when no grouped data exists yet.
 </details>
 
 ---

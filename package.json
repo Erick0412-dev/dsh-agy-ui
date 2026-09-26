@@ -37,7 +37,7 @@
     "prepare": "tsdown",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node test/interceptor.test.mjs"
+    "test": "node test/interceptor.test.mjs && node test/quota.test.mjs"
   },
   "repository": {
     "type": "git",

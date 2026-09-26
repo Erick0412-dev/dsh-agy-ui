@@ -286,6 +286,20 @@ export const CSS_TEXT = `
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+/* A verification park is not a failure and not a cooldown: it needs its own
+   colour or it reads as one of the two it is not. */
+.agy-ui-state-pill.verification-required {
+  background: rgba(56, 189, 248, 0.15);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.agy-ui-state-pill.disabled {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
 .agy-ui-section-label {
   font-size: 11px;
   font-weight: 600;
@@ -379,6 +393,36 @@ export const CSS_TEXT = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* A window upstream did not report is "unknown", not "empty": the note exists so
+   the em dash above it cannot be read as an exhausted quota. */
+.agy-ui-window-note {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.agy-ui-limit-age {
+  font-size: 10px;
+  color: #64748b;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.agy-ui-verify-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 9px;
+  padding: 8px 12px;
 }
 
 .agy-ui-link-btn {
