@@ -91,7 +91,18 @@ assert.equal(formatWindowReset("weekly", null, NOW), null);
 assert.equal(formatWindowReset("weekly", "not-a-date", NOW), null);
 assert.match(formatWindowReset("monthly", iso(20 * DAY), NOW), /^\d+月\d+日 \d\d:\d\d \(20天后\)$/);
 assert.match(formatWindowReset("weekly", iso(3 * DAY), NOW), /\(3天后\)$/);
-console.log("✓ reset countdowns (5h short form, longer windows dated)");
+// A weekly window is entered with days AND hours left; a day-only countdown
+// rounded the remainder away and disagreed with the absolute time beside it.
+assert.match(formatWindowReset("weekly", iso(3 * DAY + 21 * HOUR), NOW), /\(3天21小时后\)$/);
+assert.match(formatWindowReset("weekly", iso(6 * DAY + 1 * HOUR), NOW), /\(6天1小时后\)$/);
+// Exactly on a day boundary keeps the short form rather than reading "3天0小时后".
+assert.match(formatWindowReset("weekly", iso(3 * DAY + 30 * 60000), NOW), /\(3天后\)$/);
+// Under a day, hours replace the old "h"-suffixed form; under an hour, minutes.
+assert.match(formatWindowReset("weekly", iso(21 * HOUR + 30 * 60000), NOW), /\(21小时后\)$/);
+assert.match(formatWindowReset("weekly", iso(59 * 60000), NOW), /\(59分钟后\)$/);
+// Flooring must not manufacture a zero reading while the reset is still ahead.
+assert.match(formatWindowReset("weekly", iso(30 * 1000), NOW), /\(1分钟后\)$/);
+console.log("✓ reset countdowns (5h short form, longer windows dated day + hour)");
 
 // ─── account presentation ────────────────────────────────────────────────────
 

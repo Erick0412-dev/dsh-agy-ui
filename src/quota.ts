@@ -203,9 +203,14 @@ export function quotaColorForWindow(window: string, percent: number | null): str
  * Reset countdown for one window.
  *
  * `5h` reads as a short countdown ("2小时10分后重置"), everything longer as an
- * absolute date plus the remaining span ("10月3日 08:00 (3天后)") — the same split
- * the previous implementation used for its two buckets, generalised so a
+ * absolute date plus the remaining span ("10月3日 08:00 (3天21小时后)") — the same
+ * split the previous implementation used for its two buckets, generalised so a
  * `daily`/`monthly`/`weekly` bucket all read correctly instead of only weekly.
+ *
+ * The long form carries days AND hours: a weekly window is routinely entered
+ * with more than a day left, and a day-only countdown rounded that to a promise
+ * ("3天后") up to 24 hours early, which then disagreed with the same window's
+ * absolute time sitting right beside it.
  */
 export function formatWindowReset(window: string, resetTime: string | null, now: number = Date.now()): string | null {
   if (!resetTime) return null;
@@ -222,14 +227,20 @@ export function formatWindowReset(window: string, resetTime: string | null, now:
     const mins = totalMins % 60;
     return hours > 0 ? `${hours}小时${mins}分后重置` : `${mins}分钟后重置`;
   }
-  const totalMins = Math.ceil(diffMs / 60000);
+  // Floor, not ceil: the reading must never claim more time is left than there
+  // is. A remainder under a minute therefore floors to zero and takes its own
+  // branch rather than rendering "0分钟后".
+  const totalMins = Math.floor(diffMs / 60000);
   const days = Math.floor(totalMins / 1440);
   const hours = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
   const mm = target.getMonth() + 1;
   const dd = target.getDate();
   const hh = target.getHours().toString().padStart(2, "0");
   const minStr = target.getMinutes().toString().padStart(2, "0");
-  const countdown = days > 0 ? `${days}天后` : `${hours}h后`;
+  const countdown = days > 0
+    ? hours > 0 ? `${days}天${hours}小时后` : `${days}天后`
+    : hours > 0 ? `${hours}小时后` : `${Math.max(1, mins)}分钟后`;
   return `${mm}月${dd}日 ${hh}:${minStr} (${countdown})`;
 }
 
