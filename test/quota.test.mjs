@@ -86,7 +86,7 @@ console.log("✓ percentage mapping (null is grey, not 0%)");
 
 assert.equal(formatWindowReset("5h", iso(2 * HOUR), NOW), "2小时0分后重置");
 assert.equal(formatWindowReset("5h", iso(25 * 60000), NOW), "25分钟后重置");
-assert.equal(formatWindowReset("5h", iso(-HOUR), NOW), "即将重置");
+assert.equal(formatWindowReset("5h", iso(-HOUR), NOW), "已重置");
 assert.equal(formatWindowReset("weekly", null, NOW), null);
 assert.equal(formatWindowReset("weekly", "not-a-date", NOW), null);
 assert.match(formatWindowReset("monthly", iso(20 * DAY), NOW), /^\d+月\d+日 \d\d:\d\d \(20天后\)$/);
@@ -200,13 +200,13 @@ console.log("✓ fallback ladder (grouped → agy-link families → legacy per-m
 
 // ─── badge percentage priority ───────────────────────────────────────────────
 
-assert.equal(pickBadgePercent([groupedAccount], { google: { remainingFraction: 0.5 } }), 82, "the grouped 5h window wins");
-assert.equal(pickBadgePercent([{ ...groupedAccount, limits: null }], linkQuotas), 50);
-assert.equal(pickBadgePercent([legacyAccount], null), 31);
-assert.equal(pickBadgePercent([], null), null, "nothing known must be null, never 0");
+assert.equal(pickBadgePercent([groupedAccount], { google: { remainingFraction: 0.5 } }, NOW), 82, "the grouped 5h window wins");
+assert.equal(pickBadgePercent([{ ...groupedAccount, limits: null }], linkQuotas, NOW), 50);
+assert.equal(pickBadgePercent([legacyAccount], null, NOW), 31);
+assert.equal(pickBadgePercent([], null, NOW), null, "nothing known must be null, never 0");
 // No 5h anywhere: fall back to the shortest window the pool does report.
 assert.equal(
-  pickBadgePercent([{ ...groupedAccount, limits: [{ name: "Only weekly", windows: [{ bucketId: "3p-weekly", window: "weekly", remainingFraction: 0.33, resetTime: null }] }] }], null),
+  pickBadgePercent([{ ...groupedAccount, limits: [{ name: "Only weekly", windows: [{ bucketId: "3p-weekly", window: "weekly", remainingFraction: 0.33, resetTime: null }] }] }], null, NOW),
   33
 );
 console.log("✓ badge percentage priority");
@@ -225,13 +225,13 @@ const spentWeek = (fraction) => ({
     ]
   }]
 });
-assert.equal(pickBadgePercent([spentWeek(0.005)], null), 1, "a nearly spent week outranks a healthy 5h window");
-assert.equal(pickBadgePercent([spentWeek(0)], null), 0, "an exhausted week reads 0%");
-assert.equal(pickBadgeQuota([spentWeek(0.005)], null).window, "weekly", "and the reading names the weekly window");
+assert.equal(pickBadgePercent([spentWeek(0.005)], null, NOW), 1, "a nearly spent week outranks a healthy 5h window");
+assert.equal(pickBadgePercent([spentWeek(0)], null, NOW), 0, "an exhausted week reads 0%");
+assert.equal(pickBadgeQuota([spentWeek(0.005)], null, NOW).window, "weekly", "and the reading names the weekly window");
 // The reverse must NOT happen: a comfortable week leaves the five-hour figure in
 // charge, which is the regression a raw-minimum rule would have introduced.
-assert.equal(pickBadgePercent([groupedAccount], null), 82, "a comfortable week does not drag the 5h figure down");
-assert.equal(pickBadgeQuota([groupedAccount], null).window, "5h");
+assert.equal(pickBadgePercent([groupedAccount], null, NOW), 82, "a comfortable week does not drag the 5h figure down");
+assert.equal(pickBadgeQuota([groupedAccount], null, NOW).window, "5h");
 // daily/monthly are reported but never block, so they must never drive the badge.
 assert.equal(
   pickBadgeQuota([{
@@ -243,22 +243,89 @@ assert.equal(
         { bucketId: "gemini-monthly", window: "monthly", remainingFraction: 0.01, resetTime: iso(20 * DAY) }
       ]
     }]
-  }], null).percent,
+  }], null, NOW).percent,
   90,
   "a low monthly window is not an alarm"
 );
 // The dsh-agy-link pool reports the same two windows and is read the same way.
 assert.equal(
-  pickBadgePercent([{ ...groupedAccount, limits: null }], { google: { remainingFraction: 0.8, weeklyFraction: 0.004 } }),
+  pickBadgePercent([{ ...groupedAccount, limits: null }], { google: { remainingFraction: 0.8, weeklyFraction: 0.004 } }, NOW),
   0,
   "a spent week in the link pool drives the badge too"
 );
 assert.equal(
-  pickBadgePercent([{ ...groupedAccount, limits: null }], { google: { remainingFraction: 0.8, weeklyFraction: 0.5 } }),
+  pickBadgePercent([{ ...groupedAccount, limits: null }], { google: { remainingFraction: 0.8, weeklyFraction: 0.5 } }, NOW),
   80,
   "a healthy link week leaves the link 5h figure in charge"
 );
 console.log("✓ badge follows the binding window (5h vs weekly)");
+
+// ─── a window whose reset has passed is not a reading ────────────────────────
+
+// dsh-agy's pool ignores an already-reset window (resetInPast in isFamilyDrained,
+// parseFutureResetMs in rankPoolCandidates): its fraction described a period that
+// ended. The badge reads the same records, so it must ignore it too — otherwise a
+// spent 5h window that has already rolled over keeps the header red forever.
+const stale5h = {
+  window: "5h",
+  bucketId: "gemini-5h",
+  remainingFraction: 0.02,
+  resetTime: iso(-HOUR)
+};
+const liveWeek = { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.5, resetTime: iso(3 * DAY) };
+const staleWindowAccount = {
+  ...groupedAccount,
+  limits: [{ name: "Gemini Models", windows: [stale5h, liveWeek] }]
+};
+assert.equal(
+  pickBadgePercent([staleWindowAccount], null, NOW),
+  50,
+  "an already-reset 5h window must not outrank a live week"
+);
+assert.equal(pickBadgeQuota([staleWindowAccount], null, NOW).window, "weekly");
+// Both stale: nothing is known, so the badge yields no reading rather than a
+// leftover percentage (the caller renders the account count).
+assert.equal(
+  pickBadgePercent([{
+    ...groupedAccount,
+    limits: [{
+      name: "Gemini Models",
+      windows: [stale5h, { ...liveWeek, remainingFraction: 0.01, resetTime: iso(-DAY) }]
+    }]
+  }], null, NOW),
+  null,
+  "an all-stale group yields no reading instead of a leftover one"
+);
+// The same guard on the link and legacy rungs of the ladder.
+assert.equal(
+  pickBadgePercent(
+    [{ ...groupedAccount, limits: null }],
+    { google: { remainingFraction: 0.02, resetTime: iso(-HOUR), weeklyFraction: 0.6, weeklyResetTime: iso(4 * DAY) } },
+    NOW
+  ),
+  60,
+  "the link pool skips its own already-reset 5h window"
+);
+assert.equal(
+  pickBadgePercent([{
+    ...groupedAccount,
+    limits: null,
+    quota: { modelCount: 1, models: [{ id: "gemini-3.8-flash-tiered", remainingFraction: 0.05, resetTime: iso(-HOUR) }] }
+  }], null, NOW),
+  null,
+  "the legacy per-model channel is not exempt either"
+);
+// The card says why it withheld the number instead of showing a stale one.
+const staleCards = buildQuotaCards(staleWindowAccount, null, NOW);
+const staleRow = staleCards[0].windows.find((w) => w.bucketId === "gemini-5h");
+const liveRow = staleCards[0].windows.find((w) => w.bucketId === "gemini-weekly");
+assert.equal(staleRow.percent, null, "a stale row withholds its percentage");
+assert.equal(staleRow.stale, true);
+assert.equal(staleRow.reset, "已重置");
+assert.equal(staleRow.color, "#64748b", "and greys out rather than colouring a leftover");
+assert.equal(liveRow.stale, false);
+assert.equal(liveRow.percent, 50);
+console.log("✓ a window whose reset has passed is not a reading");
 
 assert.match(describeSource("agy-rpc"), /dsh-agy/);
 assert.notEqual(describeSource("none"), undefined);

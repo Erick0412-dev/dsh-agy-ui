@@ -125,6 +125,11 @@ export interface QuotaWindowRow {
   color: string;
   /** Reset countdown text, or null when there is no usable reset moment. */
   reset: string | null;
+  /**
+   * True when the last reading belongs to a period that has already ended, so
+   * `percent` is withheld (null) rather than shown as a live figure.
+   */
+  stale: boolean;
 }
 
 /** One rendered group card. */
@@ -208,7 +213,9 @@ export function formatWindowReset(window: string, resetTime: string | null, now:
   const targetMs = target.getTime();
   if (!Number.isFinite(targetMs)) return null;
   const diffMs = targetMs - now;
-  if (diffMs <= 0) return "即将重置";
+  // Already past: the window has reset, and any fraction cached against it is a
+  // leftover. "即将重置" promised a future event that has already happened.
+  if (diffMs <= 0) return "已重置";
   if (window === "5h") {
     const totalMins = Math.ceil(diffMs / 60000);
     const hours = Math.floor(totalMins / 60);
@@ -304,6 +311,32 @@ function rotationWindows(group: QuotaGroup): QuotaWindow[] {
 }
 
 /**
+ * Whether a window's reset moment has already passed.
+ *
+ * dsh-agy's own pool treats such a window as unmeasured (`resetInPast` in its
+ * `isFamilyDrained`, `parseFutureResetMs` in `rankPoolCandidates`): the cached
+ * fraction describes a period that has ENDED, so it is not evidence about the one
+ * we are in. This view layer reads the same records, so it has to apply the same
+ * rule — otherwise a spent five-hour window that has already rolled over keeps the
+ * badge red long after the pool has resumed serving that account.
+ */
+function resetInPast(resetTime: string | null | undefined, now: number): boolean {
+  if (!resetTime) return false;
+  const targetMs = new Date(resetTime).getTime();
+  return Number.isFinite(targetMs) && targetMs <= now;
+}
+
+/**
+ * Whether a window's fraction is a leftover from a period that has ended.
+ *
+ * Only a window that DID report a fraction can be stale: one that never reported
+ * stays "unknown", which the row already renders as its own case.
+ */
+function windowIsStale(window: QuotaWindow, now: number): boolean {
+  return window.remainingFraction !== null && resetInPast(window.resetTime, now);
+}
+
+/**
  * How close a window is to its own drain point, as a threshold multiple.
  *
  * Comparing raw `remainingFraction` values would rank a comfortable 44% week
@@ -312,9 +345,13 @@ function rotationWindows(group: QuotaGroup): QuotaWindow[] {
  * the question the pool itself asks — how much runway is left before this window
  * stops serving — so the five-hour window stays in charge until the week is
  * genuinely nearly spent.
+ *
+ * A window whose reset has passed yields null: letting a leftover fraction compete
+ * would hand the badge to a window that has already refilled.
  */
-function windowPressure(window: QuotaWindow): number | null {
+function windowPressure(window: QuotaWindow, now: number): number | null {
   if (window.remainingFraction === null) return null;
+  if (resetInPast(window.resetTime, now)) return null;
   const threshold = WINDOW_DRAIN_THRESHOLD[window.window];
   if (threshold === undefined || threshold <= 0) return null;
   return Math.max(window.remainingFraction, 0) / threshold;
@@ -328,7 +365,7 @@ function windowPressure(window: QuotaWindow): number | null {
  * rather than a fallback count. Only the first group reporting one competes:
  * mixing groups would blend the Gemini budget with the Claude/GPT one.
  */
-function pickBadgeWindow(limits: readonly QuotaGroup[] | null | undefined): QuotaWindow | null {
+function pickBadgeWindow(limits: readonly QuotaGroup[] | null | undefined, now: number): QuotaWindow | null {
   if (!limits || limits.length === 0) return null;
   const gemini = limits.find(isGeminiGroup);
   const ordered = gemini ? [gemini, ...limits.filter((g) => g !== gemini)] : [...limits];
@@ -338,23 +375,28 @@ function pickBadgeWindow(limits: readonly QuotaGroup[] | null | undefined): Quot
     let best: QuotaWindow | null = null;
     let bestPressure = Number.POSITIVE_INFINITY;
     for (const w of candidates) {
-      const pressure = windowPressure(w);
+      const pressure = windowPressure(w, now);
       if (pressure === null) continue;
       if (pressure < bestPressure) {
         best = w;
         bestPressure = pressure;
       }
     }
-    // Every rotating window of this group is unmeasured: hand back the first one
-    // so its null fraction still falls through to the link/legacy ladder.
-    return best ?? candidates[0]!;
+    if (best) return best;
+    // Nothing here still describes the period we are in: every rotating window of
+    // this group is either unmeasured or already reset. Returning null rather than
+    // the first candidate keeps a leftover fraction from being rendered as the
+    // live reading — the caller falls through to the link/legacy ladder, and then
+    // to a plain account count.
+    return null;
   }
   // No rotating window anywhere: the shortest reported window is the best
   // remaining proxy, because a future upstream vocabulary must still yield a
-  // number rather than a fallback count.
+  // number rather than a fallback count. A window whose reset has passed is
+  // skipped here too, for the same reason as above.
   for (const group of ordered) {
-    const sorted = sortWindows(group.windows);
-    if (sorted.length > 0) return sorted[0]!;
+    const usable = sortWindows(group.windows).filter((w) => !windowIsStale(w, now));
+    if (usable.length > 0) return usable[0]!;
   }
   return null;
 }
@@ -374,7 +416,10 @@ export interface BadgeQuota {
  * week there must drive the badge too: reading only `remainingFraction` showed a
  * healthy badge for a pool that could no longer serve a request.
  */
-function pickBadgeLinkWindow(info?: FamilyQuotaInfo | null): { window: string; remainingFraction: number | null } | null {
+function pickBadgeLinkWindow(
+  info: FamilyQuotaInfo | null | undefined,
+  now: number
+): { window: string; remainingFraction: number | null } | null {
   if (!info) return null;
   const candidates: QuotaWindow[] = [
     { bucketId: "google-5h", window: "5h", remainingFraction: info.remainingFraction ?? null, resetTime: info.resetTime ?? null }
@@ -387,10 +432,16 @@ function pickBadgeLinkWindow(info?: FamilyQuotaInfo | null): { window: string; r
       resetTime: info.weeklyResetTime ?? null
     });
   }
-  let best = candidates[0]!;
-  let bestPressure = windowPressure(best) ?? Number.POSITIVE_INFINITY;
-  for (const candidate of candidates.slice(1)) {
-    const pressure = windowPressure(candidate) ?? Number.POSITIVE_INFINITY;
+  const live = candidates.filter((candidate) => windowPressure(candidate, now) !== null);
+  if (live.length === 0) {
+    // Every window of this family is unmeasured or already reset: returning null
+    // lets the caller fall through instead of showing a leftover fraction.
+    return null;
+  }
+  let best = live[0]!;
+  let bestPressure = windowPressure(best, now) ?? Number.POSITIVE_INFINITY;
+  for (const candidate of live.slice(1)) {
+    const pressure = windowPressure(candidate, now) ?? Number.POSITIVE_INFINITY;
     if (pressure < bestPressure) {
       best = candidate;
       bestPressure = pressure;
@@ -410,28 +461,33 @@ function pickBadgeLinkWindow(info?: FamilyQuotaInfo | null): { window: string; r
  * Reported `daily`/`monthly` windows never drive the badge: the pool does not
  * block on them, so a low monthly figure is not a reason to alarm the header.
  *
+ * Every rung applies the same reset rule: a window whose reset moment has passed
+ * carries a leftover fraction and is skipped, so an already-reset five-hour window
+ * cannot keep the header red while its card says "已重置".
+ *
  * Returns null when nothing usable is known — the caller renders a count instead
  * of inventing 0%.
  */
 export function pickBadgeQuota(
   accounts: readonly AgyAccountView[],
-  linkQuotas?: AgyLinkQuotas | null
+  linkQuotas?: AgyLinkQuotas | null,
+  now: number = Date.now()
 ): BadgeQuota | null {
   const active = accounts.find((a) => a.active) ?? accounts[0];
 
-  const window = pickBadgeWindow(active?.limits);
+  const window = pickBadgeWindow(active?.limits, now);
   if (window) {
     const percent = toPercent(window.remainingFraction);
     if (percent !== null) return { percent, window: window.window };
   }
 
-  const link = pickBadgeLinkWindow(linkQuotas?.google);
+  const link = pickBadgeLinkWindow(linkQuotas?.google, now);
   if (link) {
     const percent = toPercent(link.remainingFraction);
     if (percent !== null) return { percent, window: link.window };
   }
 
-  const legacy = pickLegacyGemini5h(active);
+  const legacy = pickLegacyGemini5h(active, now);
   if (legacy) {
     const percent = toPercent(legacy.remainingFraction);
     if (percent !== null) return { percent, window: "5h" };
@@ -447,9 +503,10 @@ export function pickBadgeQuota(
  */
 export function pickBadgePercent(
   accounts: readonly AgyAccountView[],
-  linkQuotas?: AgyLinkQuotas | null
+  linkQuotas?: AgyLinkQuotas | null,
+  now: number = Date.now()
 ): number | null {
-  return pickBadgeQuota(accounts, linkQuotas)?.percent ?? null;
+  return pickBadgeQuota(accounts, linkQuotas, now)?.percent ?? null;
 }
 
 /** Core Gemini model ids, in priority order, for the legacy per-model channel. */
@@ -463,13 +520,21 @@ const LEGACY_GEMINI_IDS: readonly string[] = [
   "gemini-2.5-pro"
 ];
 
-/** First reported per-model Gemini quota row on the legacy channel, if any. */
-function pickLegacyGemini5h(account?: AgyAccountView): LegacyModelQuota | null {
+/**
+ * First reported per-model Gemini quota row on the legacy channel, if any.
+ *
+ * A row whose reset has passed is skipped like every other window: the per-model
+ * channel reports the same five-hour bucket, so a leftover fraction there is the
+ * same false alarm.
+ */
+function pickLegacyGemini5h(account: AgyAccountView | undefined, now: number): LegacyModelQuota | null {
   const models = account?.quota?.models;
   if (!models?.length) return null;
   for (const id of LEGACY_GEMINI_IDS) {
-    const found = models.find((m) => m.id === id);
-    if (found && Number.isFinite(found.remainingFraction)) return found;
+    const found = models.find(
+      (m) => m.id === id && Number.isFinite(m.remainingFraction) && !resetInPast(m.resetTime, now)
+    );
+    if (found) return found;
   }
   return null;
 }
@@ -477,13 +542,17 @@ function pickLegacyGemini5h(account?: AgyAccountView): LegacyModelQuota | null {
 /** Build the window rows of one grouped card. */
 function windowRows(windows: readonly QuotaWindow[], now: number): QuotaWindowRow[] {
   return sortWindows(windows).map((w) => {
-    const percent = toPercent(w.remainingFraction);
+    const stale = windowIsStale(w, now);
+    // A stale row withholds its fraction instead of showing it as live: the
+    // percentage described a period that ended, and the reset text says so.
+    const percent = stale ? null : toPercent(w.remainingFraction);
     return {
       bucketId: w.bucketId,
       label: windowLabel(w.window),
       percent,
       color: quotaColorForWindow(w.window, percent),
-      reset: formatWindowReset(w.window, w.resetTime, now)
+      reset: formatWindowReset(w.window, w.resetTime, now),
+      stale
     };
   });
 }
@@ -550,7 +619,7 @@ export function buildQuotaCards(
   const fromLink = linkCards(linkQuotas, now);
   if (fromLink.length > 0) return fromLink;
 
-  const legacy = pickLegacyGemini5h(account);
+  const legacy = pickLegacyGemini5h(account, now);
   if (legacy) {
     return [{
       key: "legacy-gemini",

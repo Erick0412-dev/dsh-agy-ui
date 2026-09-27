@@ -72,7 +72,9 @@ function renderWindow(
         </div>
       )}
       {window.percent === null && (
-        <div className="agy-ui-window-note">上游未返回该窗口的剩余比例</div>
+        <div className="agy-ui-window-note">
+          {window.stale ? "该窗口已重置，等待下次刷新" : "上游未返回该窗口的剩余比例"}
+        </div>
       )}
     </div>
   );
