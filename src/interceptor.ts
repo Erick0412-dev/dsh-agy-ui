@@ -39,22 +39,29 @@ export function formatTieredModelName(modelId: string): string {
     .join(" ");
 }
 
-/** Standard Reasoning efforts for Level-thinking / Tiered models */
+/**
+ * Reasoning efforts for Level-thinking / Tiered models.
+ *
+ * These MUST NOT declare `defaultEffort`. The harness resolves
+ * `effective = requested ?? reasoning.defaultEffort` and gates the selector's
+ * "provider default" (adaptive) entry on `defaultEffort === void 0` — declaring one
+ * both forces an effort onto every request and deletes the only option meaning "let
+ * the model decide". dsh-agy holds its own presets to the same rule, so a wrapper
+ * that adds the field silently overrides the provider it is wrapping.
+ */
 export const STANDARD_REASONING = Object.freeze({
   efforts: Object.freeze([
     { id: "low", name: "Low" },
     { id: "medium", name: "Medium" },
     { id: "high", name: "High" }
-  ]),
-  defaultEffort: "medium"
+  ])
 });
 
 export const PRO_REASONING = Object.freeze({
   efforts: Object.freeze([
     { id: "low", name: "Low" },
     { id: "high", name: "High" }
-  ]),
-  defaultEffort: "high"
+  ])
 });
 
 /** Canonical friendly names */
